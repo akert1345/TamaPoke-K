@@ -461,7 +461,23 @@ static const DigiTypeProfile DIGI_TYPE_PROFILE[] = {
   { T_DRAGON, T_FIGHTING },  // 455 v22 Imperialdramon Fighter Mode
   { T_DRAGON, T_FAIRY },  // 456 v22 Imperialdramon Paladin Mode
   { T_DRAGON, T_STEEL },  // 457 v22 Imperialdramon OmegaX
+  { T_FIRE, T_DRAGON },  // 458 v16 Vorvomon
+  { T_FIRE, T_DRAGON },  // 459 v16 Lavorvomon
+  { T_FIRE, T_DRAGON },  // 460 v16 Lavogaritamon
+  { T_FIRE, T_DRAGON },  // 461 v16 Volcanicdramon
+  { T_ICE, T_DRAGON },  // 462 v16 Bulucomon
+  { T_ICE, T_DRAGON },  // 463 v16 Paledramon
+  { T_ICE, T_DRAGON },  // 464 v16 CrysPaledramon
+  { T_ICE, T_DRAGON },  // 465 v16 Hexeblaumon
+  { T_STEEL, T_FIGHTING },  // 466 v16 Zubamon
+  { T_STEEL, T_FIGHTING },  // 467 v16 Zubaeagermon
+  { T_STEEL, T_FIGHTING },  // 468 v16 Duramon
+  { T_STEEL, T_FIGHTING },  // 469 v16 Durandamon
+  { T_STEEL, T_DARK },  // 470 v17 Vemmon
+  { T_STEEL, T_DARK },  // 471 v17 Snatchmon
+  { T_STEEL, T_DARK },  // 472 v17 Destromon
+  { T_STEEL, T_DARK },  // 473 v17 Galacticmon
 };
 static_assert(sizeof(DIGI_TYPE_PROFILE)/sizeof(DIGI_TYPE_PROFILE[0]) == DIGI_SPECIES_COUNT, "Digimon type table mismatch");
 
-// dual=421 single=37
+// dual=437 single=37

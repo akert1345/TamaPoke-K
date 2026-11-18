@@ -404,6 +404,22 @@ const DigiSpecies DIGI_SPECIES[] = {
  D("Imperialdramon Fighter Mode",22,5,225,1),
  D("Imperialdramon Paladin Mode",22,5,225,1),
  D("Imperialdramon OmegaX",22,5,255,0),
+ D("Vorvomon",16,2,32,0),
+ D("Lavorvomon",16,3,52,0),
+ D("Lavogaritamon",16,4,100,0),
+ D("Volcanicdramon",16,5,182,0),
+ D("Bulucomon",16,2,32,2),
+ D("Paledramon",16,3,52,2),
+ D("CrysPaledramon",16,4,100,2),
+ D("Hexeblaumon",16,5,182,2),
+ D("Zubamon",16,2,32,0),
+ D("Zubaeagermon",16,3,52,0),
+ D("Duramon",16,4,102,0),
+ D("Durandamon",16,5,185,0),
+ D("Vemmon",17,2,32,1),
+ D("Snatchmon",17,3,52,1),
+ D("Destromon",17,4,102,1),
+ D("Galacticmon",17,5,185,1),
 };
 #undef D
 const uint16_t DIGI_SPECIES_COUNT = sizeof(DIGI_SPECIES)/sizeof(DIGI_SPECIES[0]);
@@ -871,6 +887,22 @@ static const char *const DIGI_NAMES_KO[] = {
  "황제드라몬 파이터 모드",
  "황제드라몬 팔라딘 모드",
  "황제드라몬 오메가X",
+ "보보몬",
+ "라보보몬",
+ "라보가리타몬",
+ "볼케닉드라몬",
+ "블루코몬",
+ "페일드라몬",
+ "크리스페일드라몬",
+ "헥세블라우몬",
+ "즈바몬",
+ "즈바이거몬",
+ "듀라몬",
+ "듀란다몬",
+ "벰몬",
+ "스내치몬",
+ "데스트로몬",
+ "갤럭틱몬",
 };
 static_assert(sizeof(DIGI_NAMES_KO)/sizeof(DIGI_NAMES_KO[0]) == sizeof(DIGI_SPECIES)/sizeof(DIGI_SPECIES[0]),
               "Korean Digimon name table must match species catalog");
@@ -1244,6 +1276,18 @@ static uint8_t dmulBranches(uint16_t i,uint16_t out[4]){
   for(uint8_t k=0;k<4;k++){uint16_t x=digiFindRoute(cur.version,nm[k]);out[k]=x==DIGI_NO_FUSION?i:x;if(x!=DIGI_NO_FUSION)valid++;}
   return valid;
  };
+ if(!strcmp(n,"Vorvomon"))return set4("Lavorvomon","Lavorvomon","Lavorvomon","Lavorvomon");
+ if(!strcmp(n,"Lavorvomon"))return set4("Lavogaritamon","Lavogaritamon","Lavogaritamon","Lavogaritamon");
+ if(!strcmp(n,"Lavogaritamon"))return set4("Volcanicdramon","Volcanicdramon","Volcanicdramon","Volcanicdramon");
+ if(!strcmp(n,"Bulucomon"))return set4("Paledramon","Paledramon","Paledramon","Paledramon");
+ if(!strcmp(n,"Paledramon"))return set4("CrysPaledramon","CrysPaledramon","CrysPaledramon","CrysPaledramon");
+ if(!strcmp(n,"CrysPaledramon"))return set4("Hexeblaumon","Hexeblaumon","Hexeblaumon","Hexeblaumon");
+ if(!strcmp(n,"Zubamon"))return set4("Zubaeagermon","Zubaeagermon","Zubaeagermon","Zubaeagermon");
+ if(!strcmp(n,"Zubaeagermon"))return set4("Duramon","Duramon","Duramon","Duramon");
+ if(!strcmp(n,"Duramon"))return set4("Durandamon","Durandamon","Durandamon","Durandamon");
+ if(!strcmp(n,"Vemmon"))return set4("Snatchmon","Snatchmon","Snatchmon","Snatchmon");
+ if(!strcmp(n,"Snatchmon"))return set4("Destromon","Destromon","Destromon","Destromon");
+ if(!strcmp(n,"Destromon"))return set4("Galacticmon","Galacticmon","Galacticmon","Galacticmon");
  if(!strcmp(n,"Dodomon"))return set4("Dorimon","Gigimon","Dorimon","Gigimon");
  if(!strcmp(n,"Kuramon"))return set4("Tsumemon","Tsumemon","Tsumemon","Tsumemon");
  if(!strcmp(n,"Pitchmon"))return set4("Moonmon","Moonmon","Moonmon","Moonmon");
@@ -1251,9 +1295,9 @@ static uint8_t dmulBranches(uint16_t i,uint16_t out[4]){
  if(!strcmp(n,"Mokumon"))return set4("Pokomon","Pokomon","Pokomon","Pokomon");
  if(!strcmp(n,"Botamon"))return set4("Koromon","Koromon","Koromon","Koromon");
  if(!strcmp(n,"Chibomon"))return set4("DemiVeemon","DemiVeemon","DemiVeemon","DemiVeemon");
- if(!strcmp(n,"Dorimon"))return set4("DORUmon","Ryudamon","Dracomon","DORUmon");
- if(!strcmp(n,"Gigimon"))return set4("Guilmon","Dracomon","Guilmon","Dracomon");
- if(!strcmp(n,"Tsumemon"))return set4("Keramon","Dracmon","Ghostmon","Tsukaimon");
+ if(!strcmp(n,"Dorimon"))return set4("DORUmon","Ryudamon","Dracomon","Bulucomon");
+ if(!strcmp(n,"Gigimon"))return set4("Guilmon","Dracomon","Vorvomon","Zubamon");
+ if(!strcmp(n,"Tsumemon"))return set4("Keramon","Vemmon","Ghostmon","Tsukaimon");
  if(!strcmp(n,"Moonmon"))return set4("Swimmon","Kamemon","Lunamon","Sangomon");
  if(!strcmp(n,"Mochimon"))return set4("Gaomon","Pomumon","Funbeemon","Lalamon");
  if(!strcmp(n,"Pokomon"))return set4("Renamon","Impmon","Gazimon","Goblimon");

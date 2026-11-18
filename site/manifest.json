@@ -1,1 +1,1 @@
-{"name":"TamaPoke 기존 기기 업데이트","version":"3.110.7","new_install_prompt_erase":true,"builds":[{"chipFamily":"ESP32-S3","parts":[{"path":"app.bin","offset":65536}]}]}
+{"name":"TamaPoke 기존 기기 업데이트","version":"3.110.9","new_install_prompt_erase":true,"builds":[{"chipFamily":"ESP32-S3","parts":[{"path":"app.bin","offset":65536}]}]}
