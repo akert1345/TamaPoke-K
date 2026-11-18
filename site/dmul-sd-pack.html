@@ -7,11 +7,11 @@ main{max-width:42rem;margin:5vh auto;padding:24px}h1{line-height:1.12}
 section{background:#1d2136;padding:20px;border-radius:14px;margin:16px 0}a{color:#c0b8fa}
 button{background:#c0b8fa;color:#14152a;border:0;border-radius:8px;padding:12px;font:inherit;font-weight:bold}button:disabled{opacity:.6}
 pre{white-space:pre-wrap}code{overflow-wrap:anywhere}
-#sprites{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:10px;margin-top:12px}figure{margin:0;padding:8px;text-align:center;background:#121629;border-radius:8px}figure img{display:block;margin:auto;width:96px;height:96px;image-rendering:pixelated}figcaption{font-size:.85rem}select{font:inherit}
+#sprites{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:10px;margin-top:12px}figure{overflow:hidden;margin:0;padding:8px;text-align:center;background:#121629;border-radius:8px}figure img{display:block;margin:auto;width:96px;height:96px;image-rendering:pixelated}figcaption{font-size:.85rem}select{font:inherit}
 </style>
-<main><a href="./index.html">펌웨어 업데이트</a><h1>DMUL 디지몬 SD 팩</h1>
-<p>TamaPoke 3.110.9에 추가된 불꽃·얼음·무기·기계 계열 16종을 기존 기기의 DGI3 형식으로 변환합니다.</p>
-<section><h2>실제 스프라이트 미리보기</h2><label for="motion">동작 </label><select id="motion"><option value="idle">대기</option><option value="eat">먹기</option><option value="attack">공격</option><option value="sleep">수면</option><option value="hurt">피격</option></select><div id="sprites"></div></section>
+<main><h1>DMUL 디지몬 SD 팩</h1>
+<p>TamaPoke 3.110.10용 동작 수정판입니다. 불꽃·얼음·무기·기계 계열 16종을 기존 기기의 DGI3 형식으로 변환합니다.</p>
+<section><h2>실제 스프라이트 미리보기</h2><label for="motion">동작 </label><select id="motion"><option value="idle">대기</option><option value="walk">좌우 이동</option><option value="pose">기쁨·훈련 반응</option><option value="eat">먹기</option><option value="attack">공격</option><option value="sleep">수면</option><option value="hurt">피격</option><option value="sick">아픔</option><option value="refuse">거부 자세</option><option value="angry">화난 원본 자세</option></select><p id="motion-info"></p><div id="sprites"></div></section>
 <section><p>불꽃 · 보보몬 → 라보보몬 → 라보가리타몬 → 볼케닉드라몬</p>
 <p>얼음 · 블루코몬 → 페일드라몬 → 크리스페일드라몬 → 헥세블라우몬</p>
 <p>무기 · 즈바몬 → 즈바이거몬 → 듀라몬 → 듀란다몬</p><p>기계 · 벰몬 → 스내치몬 → 데스트로몬 → 갤럭틱몬</p><label for="range">다운로드 범위 </label><select id="range"><option value="all">전체 16종</option><option value="new">추가 8종만 (466–473)</option></select><p><button id="build">리소스 내려받고 SD 팩 만들기</button></p>
@@ -26,7 +26,7 @@ function makeZip(files){let local=[],central=[],off=0,enc=new TextEncoder();for(
 
 // Each value is the numbered DMUL source frame minus one. DGI slots are
 // arranged for TamaPoke's runtime motion map (idle, eat, attack, sleep, hurt).
-const frameMap = [0,1,7,11,1,7,11,8,3,2,6,4,5,9,10];
+const frameMap = [0,1,7,8,1,7,1,11,3,2,6,4,5,9,10];
 
 async function fetchFrame(url, context) {
   const response = await fetch(new URL(url).href, {signal: AbortSignal.timeout(20000)});
@@ -50,7 +50,18 @@ async function fetchFrame(url, context) {
 
 const motion = document.querySelector('#motion');
 const grid = document.querySelector('#sprites');
-const previewSlots = {idle:[0,1],eat:[9,8],attack:[6,7],sleep:[11,12],hurt:[13,14]};
+const previewSlots = {
+  idle:[0,1], walk:[0,1], pose:[1,2], eat:[9,8], attack:[6,7],
+  sleep:[11,12], hurt:[13,14], sick:[13,14], refuse:[10], angry:[3]
+};
+const motionInfo = document.querySelector('#motion-info');
+const descriptions = {
+  walk:'기기처럼 대기 도트 두 장을 번갈아 재생하며 좌우로 움직입니다. 오른쪽 이동에서 도트를 반전합니다.',
+  attack:'준비 자세에서 원본 공격 자세로 전환합니다.',
+  hurt:'기기에서는 아픔 도트와 함께 피격 흔들림을 사용합니다.',
+  refuse:'원본의 거부 자세를 확인할 수 있습니다.',
+  angry:'원본 검사용 자세입니다.'
+};
 const cards = roster.map(monster => {
   const card = document.createElement('figure');
   const img = document.createElement('img');
@@ -61,18 +72,31 @@ const cards = roster.map(monster => {
   grid.append(card);
   return img;
 });
-let tick = 0;
+let motionStart = performance.now();
+const motionMs = {idle:450,walk:320,pose:300,eat:260,attack:300,sleep:850,hurt:320,sick:450,refuse:500,angry:500};
 function showFrames() {
-  const slots = previewSlots[motion.value];
+  const role = motion.value;
+  const slots = previewSlots[role];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const elapsed = reduced ? 0 : performance.now() - motionStart;
+  const phase = (elapsed % 2400) / 1200;
+  const right = phase < 1;
+  const travel = role === 'walk' ? (right ? -18 + 36*phase : 54 - 36*phase) : 0;
+  const shake = role === 'hurt' && !reduced ? Math.sin(elapsed/22)*2 : 0;
+  const frame = slots[Math.floor(elapsed / motionMs[role]) % slots.length];
   cards.forEach((img,i) => {
-    const url = new URL(roster[i].urls[frameMap[slots[tick % slots.length]]]).href;
+    const url = new URL(roster[i].urls[frameMap[frame]]).href;
     if (img.src !== url) img.src = url;
+    img.style.transform = `translateX(${reduced?0:travel+shake}px) scaleX(${role==='walk' && right?-1:1})`;
   });
-  tick++;
 }
-motion.onchange = () => { tick=0; showFrames(); };
-showFrames();
-if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(showFrames,500);
+motion.onchange = () => {
+  motionStart = performance.now();
+  motionInfo.textContent = descriptions[motion.value] || '';
+  showFrames();
+};
+motion.onchange();
+setInterval(showFrames,60);
 
 const build = document.querySelector('#build');
 const status = document.querySelector('#status');

@@ -1297,7 +1297,7 @@ static uint8_t dmulBranches(uint16_t i,uint16_t out[4]){
  if(!strcmp(n,"Chibomon"))return set4("DemiVeemon","DemiVeemon","DemiVeemon","DemiVeemon");
  if(!strcmp(n,"Dorimon"))return set4("DORUmon","Ryudamon","Dracomon","Bulucomon");
  if(!strcmp(n,"Gigimon"))return set4("Guilmon","Dracomon","Vorvomon","Zubamon");
- if(!strcmp(n,"Tsumemon"))return set4("Keramon","Vemmon","Ghostmon","Tsukaimon");
+ if(!strcmp(n,"Tsumemon"))return set4("Keramon","Dracmon","Ghostmon","Tsukaimon");
  if(!strcmp(n,"Moonmon"))return set4("Swimmon","Kamemon","Lunamon","Sangomon");
  if(!strcmp(n,"Mochimon"))return set4("Gaomon","Pomumon","Funbeemon","Lalamon");
  if(!strcmp(n,"Pokomon"))return set4("Renamon","Impmon","Gazimon","Goblimon");

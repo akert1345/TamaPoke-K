@@ -1671,7 +1671,21 @@ bool Pet::jogress() {
 }
 
 uint8_t Pet::eligibleEvolutionOptions(int16_t *out, uint8_t cap) const {
-  if (!out || cap == 0 || currentIsDigimon() || !canEvolveNow()) return 0;
+  if (!out || cap == 0 || !canEvolveNow()) return 0;
+  if (currentIsDigimon()) {
+    const uint16_t current = digimonIndex(speciesId);
+    const uint16_t normal = digimonEvolutionTarget(current,level(),trAtk,trDef,trSpe,trHp,digiBest);
+    out[0] = makeDigimonId(normal);
+    // Vemmon is available once the player defeats or has already raised one.
+    constexpr uint16_t vemmon = 470;
+    if (cap > 1 && strcmp(DIGI_SPECIES[current].name, "Tsumemon") == 0 &&
+        DIGI_SPECIES[current].version == 17 && vemmon < DIGI_SPECIES_COUNT &&
+        (digiBest[vemmon] || (digiWildMaterial[vemmon >> 3] & (1u << (vemmon & 7))))) {
+      out[1] = makeDigimonId(vemmon);
+      return 2;
+    }
+    return 1;
+  }
   int16_t tmp[MAX_EVO_OPTIONS];
   uint8_t n = evolutionOptions(speciesId, tmp, MAX_EVO_OPTIONS);
   uint8_t eligible = 0;
@@ -1684,7 +1698,7 @@ uint8_t Pet::eligibleEvolutionOptions(int16_t *out, uint8_t cap) const {
 }
 
 bool Pet::evolveTo(int16_t target) {
-  if (!canEvolveNow() || currentIsDigimon()) return false;
+  if (!canEvolveNow()) return false;
   int16_t opts[MAX_EVO_OPTIONS];
   uint8_t n = eligibleEvolutionOptions(opts, MAX_EVO_OPTIONS);
   bool found = false;
@@ -1697,7 +1711,8 @@ bool Pet::evolveTo(int16_t target) {
   speciesId = target;
   evoDeclinedLv = 0;
   registerSpecies(speciesId);
-  checkLearnGates();
+  if (currentIsDigimon()) digimonDefaultMoves(digimonIndex(speciesId),level(),ivAtk,ivDef,ivSpe,ivHp,moves);
+  else checkLearnGates();
   evolveKind=1;
   sfxPlay(SFX_EVOLVE);
   evolveUntil = millis() + EVOLVE_ANIM_MS;

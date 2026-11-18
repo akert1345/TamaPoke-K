@@ -12,6 +12,10 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SD_MMC.h>
+#if defined(ARDUINO_ARCH_ESP32) && !defined(TAMAPOKE_EMU)
+#include <esp_sleep.h>
+#include <WiFi.h>
+#endif
 #ifndef TAMAPOKE_EMU
 #include <U8g2lib.h>
 #endif
@@ -56,7 +60,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.110.9"
+#define FW_VERSION "3.110.10"
 // Round 466x466 panel center. These geometry constants must be declared before
 // the text fitting helpers below; GitHub Actions compiles in strict C++ order.
 #define CX 233
@@ -941,6 +945,8 @@ Combatant btlYou, btlFoe;
 bool btlOver = false;
 bool btlWon = false;
 bool btlNewBadge = false;
+uint8_t btlXpEarned = 0;
+bool btlXpSaveQueued = false;
 uint32_t btlWinUntil = 0;   // the win screen is up
 // A trainer fight is a run of 1v1s: both sides queue their squad and the next
 // one steps up when the current one faints. This is the whole difficulty curve
@@ -1355,7 +1361,7 @@ void IRAM_ATTR touchIsr() { gTouchIrq = true; }
 uint32_t lastRender = 0;
 // proteccion del AMOLED: atenuado por inactividad
 uint32_t lastInteract = 0;
-uint8_t dimStage = 0;        // 0 awake, 1 dimmed (90s); 5min enters true screenOff
+uint8_t dimStage = 0;        // 0 awake, 1 dimmed (90s); 3min enters true screenOff
 bool swallowGesture = false; // el toque que despierta no acciona nada
 uint32_t holdStart = 0;     // pulsacion larga sobre el bicho
 uint32_t confirmUntil = 0;  // dialogo "soltar?" activo hasta este millis
@@ -1606,6 +1612,12 @@ void loop() {
     extras.flushPendingSave();
   }
 
+  // Commit battle XP after resolution and before the next input loop.
+  if (battleOpen && btlOver && btlXpSaveQueued) {
+    btlXpSaveQueued = false;
+    if (pet.savePending()) pet.flushSave();
+  }
+
   // v3.63.2: persist at most ONE NVS domain per loop pass after training. A
   // static result screen is also safe, so the earned berry/mission progress is
   // committed before the player dismisses the result instead of living only in
@@ -1696,6 +1708,23 @@ void loop() {
   // visible-frame cadence: 85/100 ms remain unchanged whenever the screen is on.
   if (screenOff) {
     nextFrameAt = 0;
+#if defined(ARDUINO_ARCH_ESP32) && !defined(TAMAPOKE_EMU)
+    // USB and radio sessions retain their normal polling. On battery, the
+    // timer resumes the loop to service the PMU power key and pet clock.
+    static bool lightSleepAvailable = true;
+    if (lightSleepAvailable && pmuReady() && batConnected() && !usbPresent() && !Serial.available() &&
+        !lan.live() && WiFi.getMode() == WIFI_MODE_NULL &&
+        !pet.savePending() && !extras.savePending() && !trainingPersistPhase &&
+        !gameOpen && !sackOpen && !spdOpen && !hpOpen && !battleOpen &&
+        !pet.evolving() && !pet.ceremony) {
+      if (esp_sleep_enable_timer_wakeup(300000) != ESP_OK) {
+        lightSleepAvailable = false;
+      } else {
+        if (esp_light_sleep_start() != ESP_OK) lightSleepAvailable = false;
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+      }
+    }
+#endif
   } else if (nextFrameAt == 0 || (int32_t)(now - nextFrameAt) >= 0) {
     uint32_t frameStart = millis();
     lastRender = frameStart;
@@ -1752,11 +1781,11 @@ void updateBrightness(uint32_t now) {
   // caller's old loop timestamp as billions of milliseconds of inactivity.
   uint32_t idle = safeElapsedMs(now, lastInteract);
 
-  // v3.61.5: after five minutes without interaction, enter the same true
+  // v3.61.5: after three minutes without interaction, enter the same true
   // screen-off state as the side button. The display is not merely dimmed: it
   // stops receiving frame transfers, the PA is muted, and touch cannot wake it.
   // Only the physical AXP2101 side button returns from this state.
-  if (!screenOff && idle > 300000UL) {
+  if (!screenOff && idle > 180000UL) {
     setScreenOffState(true, now);
   }
 
@@ -1765,7 +1794,7 @@ void updateBrightness(uint32_t now) {
   // to see. Rest now changes only the pet state; it does not darken the panel.
   // While the pet is visibly resting we also suppress idle dimming so the
   // interface remains readable. Explicit screen-off still turns the panel off.
-  dimStage = pet.sleeping ? 0 : ((idle > 300000) ? 2 : (idle > 90000) ? 1 : 0);
+  dimStage = pet.sleeping ? 0 : ((idle > 180000) ? 2 : (idle > 90000) ? 1 : 0);
   uint8_t target = usbPresent() ? 180 : 145;
   if (dimStage == 1) target = 60;
   else if (dimStage == 2) target = 8;
@@ -6397,6 +6426,7 @@ static void btlResolve(uint8_t yourMove) {
     btlWon = btlFoe.fainted();
     btlNewBadge = false;
     btlTrainGain = 0;
+    btlXpEarned = 0;
     if (btlWon && !btlLink) {
       extras.missionAction(MIS_BATTLE, 1, pet);
       if (btlPetIn && !pet.isEgg()) {
@@ -6404,7 +6434,8 @@ static void btlResolve(uint8_t yourMove) {
         const bool firstBadge = btlTrainer >= 0 && !pet.hasBadge(btlRegion, btlTrainer, btlHard);
         const uint8_t xp = btlTrainer >= 0 ? (firstBadge ? (btlHard ? 8 : 6) : 2)
                            : btlBoss ? 6 : (btlTower || btlRival) ? 4 : 1;
-        pet.gainXp(xp);
+        btlXpEarned = pet.gainXp(xp);
+        btlXpSaveQueued = btlXpEarned != 0;
       }
     }
     // Wild encounter: victory is discovery, not capture. Pokemon enter the
@@ -6760,7 +6791,8 @@ void renderWin() {
       gfx->print(T(S_BTL_NEWBADGE));
     }
   }
-  snprintf(l, sizeof(l), T(S_BADGES_FMT), pet.badgeCountIn(btlRegion, btlHard));
+  if (btlXpEarned) snprintf(l, sizeof(l), "%u XP 획득 · 배지 %u", (unsigned)btlXpEarned, (unsigned)pet.badgeCountIn(btlRegion, btlHard));
+  else snprintf(l, sizeof(l), T(S_BADGES_FMT), pet.badgeCountIn(btlRegion, btlHard));
   gfx->setTextColor(UI_INK);
   uiDrawCenteredFit(l, CX, 316, 360, 2, 1);
 
@@ -6936,7 +6968,10 @@ void renderBattle() {
     gfx->fillRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, BTL_HUD_MID);
     gfx->drawRoundRect(BTL_GRID_X, BTL_GRID_Y, 328, BTL_CELL_H * 2 + 8, 12, btlWon ? UI_BAR_OK : UI_BAR_BAD);
     gfx->setTextColor(btlWon ? UI_BAR_OK : UI_BAR_BAD);
-    uiDrawCenteredFit(btlWon ? "승리!" : "도전 종료", CX, BTL_GRID_Y + 2, 170, 2, 1);
+    char result[40];
+    if (btlWon && btlXpEarned && !btlLink) snprintf(result, sizeof(result), "승리! +%u XP", (unsigned)btlXpEarned);
+    else snprintf(result, sizeof(result), "%s", btlWon ? "승리!" : "도전 종료");
+    uiDrawCenteredFit(result, CX, BTL_GRID_Y + 2, 190, 2, 1);
     drawBattleResultButtons();
   } else if (btlMenu == 0) {
     // FIGHT across the top, then POKEMON and RUN side by side. Three full-width
@@ -9964,6 +9999,15 @@ static uint16_t digiShinyColor565(uint16_t c,uint16_t spriteId){
   nb=(uint8_t)min(63,(int)nb+2);
   return (uint16_t)(((uint16_t)(nr>>1)<<11)|((uint16_t)ng<<5)|(uint16_t)(nb>>1));
 }
+static bool validateDgiHeader(const uint8_t *h, uint16_t id, size_t fileBytes) {
+  const bool dgi3 = memcmp(h, "DGI3", 4) == 0;
+  const bool framesValid = (h[7] == 3 && (dgi3 || memcmp(h, "DGI1", 4) == 0)) ||
+                           (h[7] == 15 && (dgi3 || memcmp(h, "DGI2", 4) == 0));
+  return framesValid && h[4] == (uint8_t)id && h[8] == h[9] &&
+         (h[8] == 16 || h[8] == 48) &&
+         fileBytes == 10 + (size_t)h[7] * h[8] * h[9] * 2;
+}
+
 static bool loadDigiSprite(uint16_t id,uint8_t wantedFrame) {
   if (digiLoaded == id && digiLoadedFrame == wantedFrame) return true;
   digiLoaded = -1; digiSpriteW = digiSpriteH = 0;
@@ -9971,15 +10015,15 @@ static bool loadDigiSprite(uint16_t id,uint8_t wantedFrame) {
   File f=SD_MMC.open(path,FILE_READ);
   if(!f)return false;
   uint8_t h[10]; if(f.read(h,sizeof(h))!=(int)sizeof(h)){f.close();return false;}
-  bool dgi1=!memcmp(h,"DGI1",4),dgi2=!memcmp(h,"DGI2",4),dgi3=!memcmp(h,"DGI3",4);
-  if((!dgi1&&!dgi2&&!dgi3)||(dgi1&&h[7]!=3)||(dgi2&&h[7]!=15)||(dgi3&&h[7]!=3&&h[7]!=15)||h[4]!=(uint8_t)id){f.close();return false;}
-  uint8_t w=h[8],hh=h[9];
-  if(!((w==16&&hh==16)||(w==48&&hh==48))){f.close();return false;}
+  if (!validateDgiHeader(h, id, f.size())) return false;
+  const bool dgi3 = memcmp(h, "DGI3", 4) == 0;
+  const bool dgi2 = memcmp(h, "DGI2", 4) == 0;
+  const uint8_t w = h[8], hh = h[9];
   uint8_t frame=wantedFrame%h[7];
   size_t frameBytes=(size_t)w*hh*sizeof(uint16_t);
   size_t expected=10+(size_t)h[7]*frameBytes;
   if(f.size()!=expected||!f.seek(10+(size_t)frame*frameBytes)||f.read((uint8_t*)digiPixels,frameBytes)!=(int)frameBytes){f.close();return false;}
-  f.close();digiSpriteW=w;digiSpriteH=hh;digiFrameCount=h[7];digiAnimated=dgi2||dgi3;digiTransparent=dgi3?0x0001:0x0000;digiLoaded=id;digiLoadedFrame=frame;return true;
+  f.close();digiSpriteW=w;digiSpriteH=hh;digiFrameCount=h[7];digiAnimated=dgi2||dgi3;digiTransparent=dgi3?0x0001:0x0000;digiLoaded=id;digiLoadedFrame=wantedFrame;return true;
 }
 static void drawDigiMissingGlyph(int centerX,int groundY,int scale,bool label){
   // Shared no-sprite fallback used by profile, battle, ceremony and evolution.
@@ -10052,17 +10096,22 @@ static bool loadBattleDigi(uint8_t who,uint16_t id,uint8_t wantedFrame){
 
   uint8_t h[10];
   if(f.read(h,10)!=10){f.close();return false;}
-  bool old=!memcmp(h,"DGI1",4)||!memcmp(h,"DGI2",4),v3=!memcmp(h,"DGI3",4);
-  size_t bytes=48*48*2;
-  if((!old&&!v3)||h[4]!=(uint8_t)id||h[8]!=48||h[9]!=48||!h[7]||
-     f.size()!=10+(size_t)h[7]*bytes){
-    f.close();return false;
-  }
-
-  uint8_t frame=wantedFrame%h[7];
-  if(!f.seek(10+(size_t)frame*bytes)||
-     f.read((uint8_t*)btlDigiPixels[who],bytes)!=(int)bytes){
-    f.close();return false;
+  if (!validateDgiHeader(h, id, f.size())) return false;
+  const bool v3 = memcmp(h, "DGI3", 4) == 0;
+  const uint8_t width = h[8];
+  const size_t pixels = (size_t)width * width;
+  const size_t bytes = pixels * sizeof(uint16_t);
+  const uint8_t frame = wantedFrame % h[7];
+  // A failed read may have already modified the buffer.
+  btlDigiFor[who] = -1;
+  btlDigiFrame[who] = -1;
+  if (!f.seek(10 + (size_t)frame * bytes) ||
+      f.read((uint8_t*)btlDigiPixels[who],bytes)!=(int)bytes) return false;
+  if (width == 16) {
+    // Expand back-to-front to avoid overwriting unread source pixels.
+    for (int y = 47; y >= 0; --y)
+      for (int x = 47; x >= 0; --x)
+        btlDigiPixels[who][y * 48 + x] = btlDigiPixels[who][(y / 3) * 16 + x / 3];
   }
   f.close();
 
@@ -11416,19 +11465,10 @@ static void drawJogressPreviewPanel() {
 }
 
 static void openNormalEvolutionDialog() {
-  // Digimon normal evolution has its own deterministic route resolver.
-  // v3.109.3's Pokemon branch picker called eligibleEvolutionOptions(), which
-  // intentionally returns 0 for Digimon, so a ready Digimon could show the
-  // evolution CTA but tapping it opened no confirmation dialog. Keep Digimon
-  // on the established Pet::evolve() path and reserve the picker for Pokemon.
   evoPickCount = 0;
   evoPickPage = 0;
   evoPickTarget = -1;
   evoPickConfirm = false;
-  if (pet.currentIsDigimon()) {
-    choiceKind = pet.canEvolveNow() ? 1 : 0;
-    return;
-  }
   evoPickCount = pet.eligibleEvolutionOptions(evoPickOpts, MAX_EVO_OPTIONS);
   choiceKind = evoPickCount > 1 ? 5 : (evoPickCount == 1 ? 1 : 0);
 }
@@ -11500,7 +11540,8 @@ static bool evolutionPickerTap(int16_t x, int16_t y) {
     if (inX && y >= c1t && y <= c1b) {
       int16_t old = pet.speciesId;
       if (pet.evolveTo(evoPickTarget)) {
-        evoPmd.load(old, pet.shiny);
+        if (isDigimonId(old)) { if (evoPmd.loaded) evoPmd.unload(); }
+        else evoPmd.load(old, pet.shiny);
         cardOpen = false;
       }
       choiceKind = 0;
